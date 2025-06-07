@@ -18,14 +18,21 @@ from monai.data import decollate_batch
 
 # ==== Config ====
 class Config:
+    exp_name = "T7-swin-unetr-exp1"
+    
+    # wandb settings
+    wandb_project = "BraTS"
+    wandb_run_name = exp_name
+    wandb_enabled = True  # set to False if you want to disable logging temporarily
+
     meta_csv = "./meta/data_split_Usage20.csv"
     data_dir = "/media/volume1/BraTS2025/7/MICCAI2024-BraTS-GoAT-TrainingData-With-GroundTruth/MICCAI2024-BraTS-GoAT-TrainingData-With-GroundTruth"
-    save_dir = "./experiments/exp1"
+    save_dir = "./experiments/"+exp_name
     
     # Model parameters
     roi = (128, 128, 128)
     in_channels = 4
-    out_channels = 5
+    out_channels = 4
     feature_size = 48
     
     # Training
@@ -38,6 +45,11 @@ class Config:
     val_every = 1
     sw_batch_size = 1
     infer_overlap = 0.6
+    
+    # wandb settings
+    wandb_project = "BraTS"
+    wandb_run_name = "T7-swin-unetr-exp1"
+    wandb_enabled = True  # set to False if you want to disable logging temporarily
 
 # ====== Helper ======
 def save_checkpoint(model, epoch, best_dice, save_path):
@@ -84,16 +96,25 @@ def main():
     # save dir
     os.makedirs(config.save_dir, exist_ok=True)
 
-    # # ==== Initialize wandb ====
-    # wandb.init(
-    #     project="brats2025",
-    #     name="sanity-check-loader",
-    #     config={
-    #         "roi": config.roi,
-    #         "batch_size": config.batch_size,
-    #         "out_channels": config.out_channels,
-    #     }
-    # )
+    # ==== Initialize wandb ====
+    if config.wandb_enabled:
+        wandb.init(
+            project=config.wandb_project,
+            name=config.wandb_run_name,
+            config={
+                "roi": config.roi,
+                "batch_size": config.batch_size,
+                "in_channels": config.in_channels,
+                "out_channels": config.out_channels,
+                "lr": config.lr,
+                "weight_decay": config.weight_decay,
+                "sw_batch_size": config.sw_batch_size,
+                "infer_overlap": config.infer_overlap,
+                "max_epochs": config.max_epochs,
+            },
+            reinit=True,
+            settings=wandb.Settings(code_dir=""),
+        )
 
     # ==== Build loaders ====
     print("[🚀] Loading data...")
@@ -113,11 +134,12 @@ def main():
     test_cnt = len(test_loader.dataset)
 
     print(f"[📊] Train: {train_cnt} | Val: {val_cnt} | Test: {test_cnt}")
-    # wandb.config.update({
-    #     "train_cnt": train_cnt,
-    #     "val_cnt": val_cnt,
-    #     "test_cnt": test_cnt,
-    # })
+    if config.wandb_enabled:
+        wandb.config.update({
+            "train_samples": train_cnt,
+            "val_samples": val_cnt,
+            "test_samples": test_cnt,
+        })
 
     # ==== Sample check ====
     print("[🔍] Fetching one sample from train loader...")
@@ -158,45 +180,6 @@ def main():
         overlap=config.infer_overlap,
     )
     
-    # ==== Train ====
-    # trainer(
-    #     model=model,
-    #     train_loader=train_loader,
-    #     val_loader=val_loader,
-    #     optimizer=optimizer,
-    #     loss_func=loss_func,
-    #     acc_func=dice_metric,
-    #     scheduler=scheduler,
-    #     max_epochs=config.max_epochs,
-    #     val_every=config.val_every,
-    #     device=device,
-    #     model_inferer=model_inferer,
-    #     start_epoch=0,
-    #     post_sigmoid=post_sigmoid,
-    #     post_pred=post_pred,
-    #     checkpoint_dir=config.save_dir,
-    #     wandb_log=False,
-    # )
-    # ==== Only Run Validation ====
-#     checkpoint_path = os.path.join(config.save_dir, "model.pt")
-#     if os.path.exists(checkpoint_path):
-#         print(f"[📦] Loading model from {checkpoint_path}")
-#         checkpoint = torch.load(checkpoint_path, map_location=device)
-#         model.load_state_dict(checkpoint["state_dict"])
-#     else:
-#         print("[❗] No checkpoint found. Using randomly initialized weights.")
-
-#     val_epoch(
-#         model=model,
-#         loader=val_loader,
-#         epoch=0,
-#         acc_func=dice_metric,
-#         device=device,
-#         model_inferer=model_inferer,
-#         post_sigmoid=post_sigmoid,
-#         post_pred=post_pred,
-#         out_channels=config.out_channels,
-#     )
     best_dice = 0.0
     for epoch in trange(config.max_epochs, desc="Epochs"):
         print(f"\n🌀 Epoch {epoch}")
@@ -210,13 +193,23 @@ def main():
             val_dice = val_epoch(model, val_loader, model_inferer, dice_metric, post_sigmoid, post_pred, device)
             avg_dice = np.mean(val_dice[1:])  # exclude BG
             print(f"🎯 Val Dice: {avg_dice:.4f}")
-            for i, name in enumerate(["BG", "NETC", "SNFH", "ET", "RC"]):
+            for i, name in enumerate(["BG", "NETC", "SNFH", "ET"]):
                 print(f"   {name:<5}: {val_dice[i]:.4f}")
 
             # Save best
             if avg_dice > best_dice:
                 best_dice = avg_dice
                 save_checkpoint(model, epoch, best_dice, os.path.join(config.save_dir, "best_model.pt"))
+        
+        if config.wandb_enabled:
+            wandb.log({
+                "train/train_loss": train_loss,
+                "val/val_dice_avg": avg_dice,
+                "val/val_dice_NETC": val_dice[1],
+                "val/val_dice_SNFH": val_dice[2],
+                "val/val_dice_ET": val_dice[3],
+                "lr": scheduler.get_last_lr()[0]
+            }, step=epoch)
 
         scheduler.step()
 
