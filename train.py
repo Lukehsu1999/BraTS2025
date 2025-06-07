@@ -20,7 +20,7 @@ from monai.data import decollate_batch
 class Config:
     meta_csv = "./meta/data_split_Usage20.csv"
     data_dir = "/media/volume1/BraTS2025/7/MICCAI2024-BraTS-GoAT-TrainingData-With-GroundTruth/MICCAI2024-BraTS-GoAT-TrainingData-With-GroundTruth"
-    save_dir = "./exp1"
+    save_dir = "./experiments/exp1"
     
     # Model parameters
     roi = (128, 128, 128)
