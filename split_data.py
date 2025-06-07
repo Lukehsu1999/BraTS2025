@@ -20,7 +20,7 @@ def make_split_tag(patient_list, data_usage_ratio=1, seed=0):
     patient_id = [os.path.basename(i) for i in patient_list]
     
     # Fix test_size -> train_size here
-    dropout_patient, train_patient = train_test_split(patient_id,train_size=data_usage_ratio, random_state=seed)
+    train_patient, dropout_patient = train_test_split(patient_id,train_size=data_usage_ratio, random_state=seed)
     train_patient, test_patient = train_test_split(train_patient,test_size=0.2, random_state=seed)
     train_patient, val_patient = train_test_split(train_patient,test_size=0.2, random_state=seed)
     data_split = [ is_train(pid, dropout_patient, train_patient, val_patient, test_patient) for pid in patient_id ]
@@ -42,7 +42,7 @@ if __name__ == '__main__':
     # set determinism to ensure reproducibility
     seed = 0 
     patient_list = os.listdir(data_dir)
-    meta = make_split_tag(patient_list, data_usage_ratio=1, seed=seed)
+    meta = make_split_tag(patient_list, data_usage_ratio=0.2, seed=seed)
     
     df = pd.DataFrame(meta)
-    df.to_csv('./meta/data_split_UsageFull.csv', index=False)
+    df.to_csv('./meta/data_split_Usage20.csv', index=False)
